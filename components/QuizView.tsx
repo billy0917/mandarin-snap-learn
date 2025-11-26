@@ -29,12 +29,17 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
             // Debug: Log all Chinese voices
             console.log('📱 所有可用的中文語音:');
             voices.filter(v => v.lang.toLowerCase().includes('zh')).forEach(v => {
-                console.log(`  - ${v.name} (${v.lang})`);
+                console.log(`  - ${v.name} (${v.lang}) ${v.default ? '[系統默認]' : ''}`);
             });
         }
     };
 
+    // iOS Safari 需要延遲加載語音列表
     updateVoices();
+    
+    // 延遲再次嘗試（iOS 修復）
+    setTimeout(updateVoices, 100);
+    setTimeout(updateVoices, 500);
     
     // Chrome/Android loads voices asynchronously
     if (synth.onvoiceschanged !== undefined) {
@@ -60,59 +65,84 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
 
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // Filter out Cantonese/HK voices first to prevent "Not Putonghua" issues
+    console.log('📱 所有中文語音選項：');
+    availableVoices.filter(v => v.lang.toLowerCase().includes('zh')).forEach(v => {
+        console.log(`  ${v.name} (${v.lang}) ${v.default ? '[默認]' : ''}`);
+    });
+    
+    // STRICT Filter: 排除所有粵語相關的語音
     const mandarinVoices = availableVoices.filter(v => {
         const lang = v.lang.toLowerCase();
         const name = v.name.toLowerCase();
-        return !lang.includes('hk') && 
-               !lang.includes('yue') && 
-               !lang.includes('cantonese') &&
-               !name.includes('hong kong') &&
-               !name.includes('cantonese');
+        
+        // 排除條件：包含粵語相關關鍵詞
+        const isCantonese = 
+            lang.includes('hk') || 
+            lang.includes('yue') || 
+            lang.includes('cantonese') ||
+            name.includes('hong kong') ||
+            name.includes('cantonese') ||
+            name.includes('sin-ji') ||  // iOS 台灣語音，聽起來像粵語
+            name.includes('sinji');
+            
+        return !isCantonese && lang.includes('zh');
     });
 
-    // iOS specific: Prefer Ting-Ting (zh-CN female voice)
-    let targetVoice = mandarinVoices.find(v => 
-        v.name.toLowerCase().includes('ting-ting') || 
-        v.name.toLowerCase().includes('tingting')
+    console.log('✅ 過濾後的普通話語音：');
+    mandarinVoices.forEach(v => {
+        console.log(`  ${v.name} (${v.lang})`);
+    });
+
+    let targetVoice: SpeechSynthesisVoice | undefined;
+
+    // iOS Safari/Chrome: 強制使用 Ting-Ting (zh-CN)
+    targetVoice = mandarinVoices.find(v => 
+        (v.name.toLowerCase().includes('ting-ting') || 
+         v.name.toLowerCase().includes('tingting')) &&
+        (v.lang === 'zh-CN' || v.lang === 'zh_CN' || v.lang.startsWith('zh-CN'))
     );
 
-    // Priority 1: Exact zh-CN (Standard Putonghua)
-    if (!targetVoice) {
-        targetVoice = mandarinVoices.find(v => v.lang === 'zh-CN' || v.lang === 'zh_CN');
-    }
-    
-    // Priority 2: Google Putonghua specific (Common on Android)
-    if (!targetVoice) {
-        targetVoice = mandarinVoices.find(v => v.name.includes('Putonghua') || v.name.includes('Chinese'));
-    }
-
-    // Priority 3: Taiwan Mandarin (zh-TW) - Acceptable alternative, but NOT Sin-Ji (Cantonese-like)
+    // Priority 1: 任何 zh-CN 語音（中國普通話）
     if (!targetVoice) {
         targetVoice = mandarinVoices.find(v => 
-            (v.lang === 'zh-TW' || v.lang === 'zh_TW') && 
-            !v.name.toLowerCase().includes('sin-ji')
+            v.lang === 'zh-CN' || 
+            v.lang === 'zh_CN' || 
+            v.lang.startsWith('zh-CN')
+        );
+    }
+    
+    // Priority 2: Google/Android 普通話
+    if (!targetVoice) {
+        targetVoice = mandarinVoices.find(v => 
+            v.name.toLowerCase().includes('mandarin') ||
+            v.name.toLowerCase().includes('putonghua') ||
+            (v.name.toLowerCase().includes('chinese') && v.lang.includes('CN'))
         );
     }
 
-    // Priority 4: Any remaining 'zh' voice that passed the filter
+    // Priority 3: 台灣國語 zh-TW（但已排除 Sin-Ji）
+    if (!targetVoice) {
+        targetVoice = mandarinVoices.find(v => 
+            v.lang === 'zh-TW' || 
+            v.lang === 'zh_TW' || 
+            v.lang.startsWith('zh-TW')
+        );
+    }
+
+    // Priority 4: 任何剩餘的中文語音（已過濾粵語）
     if (!targetVoice && mandarinVoices.length > 0) {
-        targetVoice = mandarinVoices.find(v => v.lang.toLowerCase().includes('zh'));
+        targetVoice = mandarinVoices[0];
     }
 
-    // Fallback: If filtered list is empty, look at original list but try to find CN
-    if (!targetVoice && availableVoices.length > 0) {
-         targetVoice = availableVoices.find(v => v.lang === 'zh-CN');
-    }
-
+    // 設置語音和語言
     if (targetVoice) {
         utterance.voice = targetVoice;
         utterance.lang = targetVoice.lang;
-        console.log('🔊 使用語音:', targetVoice.name, '語言:', targetVoice.lang);
+        console.log('🔊 最終選擇語音:', targetVoice.name, '|', targetVoice.lang);
     } else {
-        // Force lang code if no voice object found
+        // 強制使用 zh-CN 語言代碼
         utterance.lang = 'zh-CN';
-        console.log('🔊 使用預設語言: zh-CN');
+        console.warn('⚠️ 未找到合適語音，強制使用 zh-CN');
     }
 
     utterance.rate = 0.8; // Slower for clarity
