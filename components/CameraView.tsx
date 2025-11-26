@@ -119,10 +119,10 @@ const CameraView: React.FC<CameraViewProps> = ({ onCapture }) => {
         )}
       </div>
 
-      {/* Controls */}
-      <div className="h-32 bg-black/80 backdrop-blur-md flex items-center justify-center relative z-10 pb-4">
+      {/* Controls - 提高控制區域，適配手機底部 */}
+      <div className="h-40 bg-black/80 backdrop-blur-md flex items-start justify-center relative z-10 pt-6 pb-safe">
         {/* Gallery Upload Button */}
-        <div className="absolute left-8 bottom-8">
+        <div className="absolute left-8 top-6">
             <input 
                 type="file" 
                 accept="image/*" 
@@ -132,7 +132,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onCapture }) => {
             />
             <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="w-12 h-12 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white hover:bg-gray-700 transition"
+                className="w-12 h-12 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white hover:bg-gray-700 transition active:scale-95"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
@@ -140,16 +140,16 @@ const CameraView: React.FC<CameraViewProps> = ({ onCapture }) => {
             </button>
         </div>
 
-        {/* Capture Button */}
+        {/* Capture Button - 向上移動 */}
         <button 
           onClick={takePhoto}
-          className="w-20 h-20 rounded-full border-4 border-white bg-transparent p-1 shadow-lg active:scale-95 transition-transform"
+          className="w-20 h-20 rounded-full border-4 border-white bg-transparent p-1 shadow-lg active:scale-95 transition-transform mt-0"
         >
             <div className="w-full h-full rounded-full bg-white"></div>
         </button>
 
          {/* Spacer for symmetry */}
-         <div className="absolute right-8 bottom-8 w-12 h-12"></div>
+         <div className="absolute right-8 top-6 w-12 h-12"></div>
       </div>
     </div>
   );

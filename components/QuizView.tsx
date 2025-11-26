@@ -26,6 +26,11 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
         const voices = synth.getVoices();
         if (voices.length > 0) {
             setAvailableVoices(voices);
+            // Debug: Log all Chinese voices
+            console.log('📱 所有可用的中文語音:');
+            voices.filter(v => v.lang.toLowerCase().includes('zh')).forEach(v => {
+                console.log(`  - ${v.name} (${v.lang})`);
+            });
         }
     };
 
@@ -66,17 +71,28 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
                !name.includes('cantonese');
     });
 
+    // iOS specific: Prefer Ting-Ting (zh-CN female voice)
+    let targetVoice = mandarinVoices.find(v => 
+        v.name.toLowerCase().includes('ting-ting') || 
+        v.name.toLowerCase().includes('tingting')
+    );
+
     // Priority 1: Exact zh-CN (Standard Putonghua)
-    let targetVoice = mandarinVoices.find(v => v.lang === 'zh-CN' || v.lang === 'zh_CN');
+    if (!targetVoice) {
+        targetVoice = mandarinVoices.find(v => v.lang === 'zh-CN' || v.lang === 'zh_CN');
+    }
     
     // Priority 2: Google Putonghua specific (Common on Android)
     if (!targetVoice) {
         targetVoice = mandarinVoices.find(v => v.name.includes('Putonghua') || v.name.includes('Chinese'));
     }
 
-    // Priority 3: Taiwan Mandarin (zh-TW) - Acceptable alternative
+    // Priority 3: Taiwan Mandarin (zh-TW) - Acceptable alternative, but NOT Sin-Ji (Cantonese-like)
     if (!targetVoice) {
-        targetVoice = mandarinVoices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW');
+        targetVoice = mandarinVoices.find(v => 
+            (v.lang === 'zh-TW' || v.lang === 'zh_TW') && 
+            !v.name.toLowerCase().includes('sin-ji')
+        );
     }
 
     // Priority 4: Any remaining 'zh' voice that passed the filter
@@ -92,9 +108,11 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
     if (targetVoice) {
         utterance.voice = targetVoice;
         utterance.lang = targetVoice.lang;
+        console.log('🔊 使用語音:', targetVoice.name, '語言:', targetVoice.lang);
     } else {
         // Force lang code if no voice object found
         utterance.lang = 'zh-CN';
+        console.log('🔊 使用預設語言: zh-CN');
     }
 
     utterance.rate = 0.8; // Slower for clarity
