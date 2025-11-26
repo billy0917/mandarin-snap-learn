@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   
   return {
     plugins: [react()],
-    base: './', // Ensures assets are linked correctly on GitHub Pages
+    base: '/mandarin-snap-learn/', // GitHub Pages base path
     define: {
       // Injects the API Key from the GitHub Secret into the code during build
       'process.env.API_KEY': JSON.stringify(env.API_KEY)
