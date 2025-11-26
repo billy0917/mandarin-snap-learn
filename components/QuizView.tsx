@@ -18,6 +18,7 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('');
+  const [showVoiceSelector, setShowVoiceSelector] = useState(false);
 
   // Initialize Voices
   useEffect(() => {
@@ -54,60 +55,107 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
     };
   }, []);
 
-  // 使用 Google Translate TTS API 播放普通話（解決 iOS Safari bug）
+  // Text to Speech Helper with STRICT Mandarin Priority
   const speakText = (text: string) => {
-    // 使用 Audio 元素播放 Google TTS
-    const encodedText = encodeURIComponent(text);
-    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-CN&client=tw-ob&q=${encodedText}`;
-    
-    console.log('� 使用 Google TTS 播放普通話:', text);
-    
-    const audio = new Audio(audioUrl);
-    audio.playbackRate = 0.9; // 稍微慢一點更清晰
-    
-    audio.play().catch(err => {
-      console.warn('Google TTS 失敗，嘗試備用方案:', err);
-      // 備用方案：使用 Web Speech API
-      fallbackSpeak(text);
-    });
-  };
-
-  // 備用方案：原生 Web Speech API
-  const fallbackSpeak = (text: string) => {
     if (!('speechSynthesis' in window)) {
         console.warn("Browser does not support text-to-speech");
         return;
     }
 
     const synth = window.speechSynthesis;
-    synth.cancel();
+    synth.cancel(); // Cancel any current speaking
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    // 重新獲取最新的語音列表
+    const voices = synth.getVoices();
+    
+    console.log('📱 所有中文語音選項：');
+    voices.filter(v => v.lang.toLowerCase().includes('zh')).forEach(v => {
+        console.log(`  ${v.name} (${v.lang}) ${v.default ? '[默認]' : ''}`);
+    });
     
     let targetVoice: SpeechSynthesisVoice | undefined;
 
-    // 用戶手動選擇的語音
+    // Priority 0: 用戶手動選擇的語音（最高優先級）
     if (selectedVoiceURI) {
-        targetVoice = availableVoices.find(v => v.voiceURI === selectedVoiceURI);
+        targetVoice = voices.find(v => v.voiceURI === selectedVoiceURI);
+        if (targetVoice) {
+            console.log('👤 使用用戶選擇的語音:', targetVoice.name);
+        }
     }
 
-    // 自動選擇 zh-CN
+    // 如果沒有用戶選擇，則使用自動選擇
     if (!targetVoice) {
-        targetVoice = availableVoices.find(v => 
-            v.lang === 'zh-CN' || v.lang.startsWith('zh-CN')
+        // STRICT Filter: 排除所有粵語相關的語音
+        const mandarinVoices = voices.filter(v => {
+            const lang = v.lang.toLowerCase();
+            const name = v.name.toLowerCase();
+            
+            // 排除條件：包含粵語相關關鍵詞
+            const isCantonese = 
+                lang.includes('hk') || 
+                lang.includes('yue') || 
+                lang.includes('cantonese') ||
+                name.includes('hong kong') ||
+                name.includes('cantonese') ||
+                name.includes('sin-ji') ||
+                name.includes('sinji');
+                
+            return !isCantonese && lang.includes('zh');
+        });
+
+        console.log('✅ 過濾後的普通話語音：');
+        mandarinVoices.forEach(v => {
+            console.log(`  ${v.name} (${v.lang})`);
+        });
+
+        // iOS: 優先 Ting-Ting (zh-CN)
+        targetVoice = mandarinVoices.find(v => 
+            v.name.toLowerCase().includes('ting-ting') || 
+            v.name.toLowerCase().includes('tingting')
         );
+
+        // Priority 1: zh-CN
+        if (!targetVoice) {
+            targetVoice = mandarinVoices.find(v => 
+                v.lang === 'zh-CN' || v.lang.startsWith('zh-CN')
+            );
+        }
+        
+        // Priority 2: zh-TW
+        if (!targetVoice) {
+            targetVoice = mandarinVoices.find(v => 
+                v.lang === 'zh-TW' || v.lang.startsWith('zh-TW')
+            );
+        }
+
+        // Priority 3: 任何過濾後的中文語音
+        if (!targetVoice && mandarinVoices.length > 0) {
+            targetVoice = mandarinVoices[0];
+        }
     }
 
+    // 創建 utterance
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // 設置語音和語言
     if (targetVoice) {
         utterance.voice = targetVoice;
         utterance.lang = targetVoice.lang;
+        console.log('🔊 最終選擇語音:', targetVoice.name, '|', targetVoice.lang);
     } else {
         utterance.lang = 'zh-CN';
+        console.warn('⚠️ 未找到合適語音，強制使用 zh-CN');
     }
 
     utterance.rate = 0.8;
+    utterance.pitch = 1.0;
     utterance.volume = 1.0;
-    synth.speak(utterance);
+    
+    // iOS Safari 修復：延遲執行
+    setTimeout(() => {
+        synth.speak(utterance);
+        console.log('🎵 開始播放');
+    }, 50);
   };
 
   const handleSelect = (questionId: number, optionId: string, correctOptionId: string) => {
@@ -253,16 +301,62 @@ const QuizView: React.FC<QuizViewProps> = ({ data, imageSrc, onReset }) => {
           <p className="text-2xl text-emerald-600 font-medium mb-1 font-serif">{data.pinyin}</p>
           <p className="text-gray-500 uppercase tracking-wider text-sm font-semibold mb-3">{data.englishMeaning}</p>
           
-          <button 
-            onClick={() => speakText(data.detectedObject)}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-50 text-emerald-700 rounded-full text-base font-bold hover:bg-emerald-100 transition-colors border-2 border-emerald-200 active:scale-95 shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-              <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
-              <path d="M15.932 7.757a.75.75 0 011.061 0 6 6 0 010 8.486.75.75 0 01-1.06-1.061 4.5 4.5 0 000-6.364.75.75 0 010-1.06z" />
-            </svg>
-            🇨🇳 朗讀詞語（普通話）
-          </button>
+          <div className="flex items-center justify-center gap-3">
+            <button 
+              onClick={() => speakText(data.detectedObject)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-50 text-emerald-700 rounded-full text-base font-bold hover:bg-emerald-100 transition-colors border-2 border-emerald-200 active:scale-95 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
+                <path d="M15.932 7.757a.75.75 0 011.061 0 6 6 0 010 8.486.75.75 0 01-1.06-1.061 4.5 4.5 0 000-6.364.75.75 0 010-1.06z" />
+              </svg>
+              朗讀詞語
+            </button>
+
+            {/* 語音選擇按鈕 */}
+            <button
+              onClick={() => setShowVoiceSelector(!showVoiceSelector)}
+              className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors border-2 border-gray-300 active:scale-95"
+              title="選擇語音"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* 語音選擇器下拉面板 */}
+          {showVoiceSelector && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-xl border-2 border-gray-200 text-left">
+              <h3 className="text-sm font-bold text-gray-700 mb-2">選擇語音（如果自動選擇錯誤）:</h3>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {availableVoices
+                  .filter(v => v.lang.toLowerCase().includes('zh'))
+                  .map(voice => (
+                    <label 
+                      key={voice.voiceURI}
+                      className="flex items-center gap-2 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="radio"
+                        name="voice"
+                        value={voice.voiceURI}
+                        checked={selectedVoiceURI === voice.voiceURI}
+                        onChange={(e) => setSelectedVoiceURI(e.target.value)}
+                        className="w-4 h-4 text-emerald-600"
+                      />
+                      <span className="text-sm text-gray-800">
+                        {voice.name} 
+                        <span className="text-gray-500 ml-1">({voice.lang})</span>
+                        {voice.lang.includes('CN') && <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">推薦</span>}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">提示: 選擇包含 "zh-CN" 或 "Ting-Ting" 的語音獲得標準普通話發音</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-8">
