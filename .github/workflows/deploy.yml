@@ -30,7 +30,8 @@ jobs:
         run: npm run build
         env:
           # This pulls the key from your GitHub Repository Secrets
-          API_KEY: ${{ secrets.API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.API_KEY }}
+          VITE_GEMINI_API_URL: https://ai.juguang.chat/v1beta/models/gemini-2.0-flash:generateContent
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
