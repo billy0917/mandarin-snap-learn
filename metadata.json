@@ -1,0 +1,7 @@
+{
+  "name": "Mandarin Snap & Learn",
+  "description": "拍照並透過 AI 自動生成普通話學習題目",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
